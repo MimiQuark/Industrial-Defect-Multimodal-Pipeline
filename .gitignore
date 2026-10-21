@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+
+# Model checkpoints and large artifacts
+artifacts/
+checkpoints/
+*.pth
+*.pt
+*.onnx
+datasets/mvtec_anomaly_detection/
+outputs/
+data/raw/
+
+# Local config / secrets
+.env
+.env.*
+*.bak
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
