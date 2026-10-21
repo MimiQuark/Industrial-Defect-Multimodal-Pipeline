@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  datapipe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install datapipe dependencies
+        run: python -m pip install numpy pillow pyyaml
+      - name: Compile
+        run: python -m compileall -q core datapipe model tests
+      - name: Datapipe tests
+        run: python tests/test_datapipe.py

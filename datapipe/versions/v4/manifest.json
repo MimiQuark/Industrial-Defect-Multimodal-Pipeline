@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-09-02T12:40:55.209229+00:00",
+  "version": "v4",
+  "output": "E:\\KimiData\\kimi\\workspace\\1\\Industrial-Defect-Gan-Augmentation-main\\Industrial-Defect-Gan-Augmentation-main\\datapipe\\versions\\v4\\dataset.jsonl",
+  "num_records": 39,
+  "pipeline": "A",
+  "dataset_root": "E:\\KimiData\\kimi\\workspace\\1\\Industrial-Defect-Gan-Augmentation-main\\Industrial-Defect-Gan-Augmentation-main\\datasets\\demo_mvtec_synthetic",
+  "data_basis": "synthetic demo",
+  "rewrite_mode": "template_fallback",
+  "seed": 42,
+  "config_hash": "d168a1bdfeb78a97",
+  "input_stats": {
+    "num_images": 42,
+    "num_defect": 24,
+    "num_good": 18
+  },
+  "dedup": {
+    "removed": 3,
+    "kept": 39,
+    "removed_images": [
+      "bottle/test/good/999_duplicate.png",
+      "cable/test/good/999_duplicate.png",
+      "capsule/test/good/999_duplicate.png"
+    ]
+  },
+  "validation": {
+    "passed": 39,
+    "failed": 0,
+    "pass_rate": 1.0
+  }
+}
