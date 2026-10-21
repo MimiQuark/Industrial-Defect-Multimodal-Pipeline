@@ -59,8 +59,8 @@ class MVTecADDataset(Dataset):
                 raise ValueError(f"类别不存在: {category}")
             self.categories = [category]
 
-        # 加载图像路径和标签
-        self.image_paths, self.labels = self._load_data()
+        # 加载图像路径、标签与（可选的）真值 mask
+        self.image_paths, self.labels, self.mask_paths = self._load_data()
 
         # 设置数据增强
         self.transform = self._get_transform()
@@ -73,15 +73,18 @@ class MVTecADDataset(Dataset):
                 categories.append(item.name)
         return sorted(categories)
 
-    def _load_data(self) -> Tuple[List[Path], List[int]]:
+    def _load_data(self) -> Tuple[List[Path], List[int], List[Optional[Path]]]:
         """
-        加载图像路径和标签
+        加载图像路径、标签与真值 mask 路径。
 
         Returns:
-            (图像路径列表, 标签列表), 0表示正常，1表示异常
+            (图像路径列表, 标签列表, mask 路径列表)
+            标签 0 表示正常、1 表示异常；正常样本与缺失 mask 的异常样本
+            对应位置为 None。
         """
-        image_paths = []
-        labels = []
+        image_paths: List[Path] = []
+        labels: List[int] = []
+        mask_paths: List[Optional[Path]] = []
 
         for category in self.categories:
             category_path = self.root_path / category
@@ -92,19 +95,24 @@ class MVTecADDataset(Dataset):
                 for img_file in normal_path.glob("*.png"):
                     image_paths.append(img_file)
                     labels.append(0)  # 正常
+                    mask_paths.append(None)
 
             # 异常图像（仅在test模式下）
             if self.mode == "test":
                 anomaly_path = category_path / self.mode
                 for anomaly_type in anomaly_path.iterdir():
-                    if anomaly_type.name == "good":
+                    if anomaly_type.name == "good" or not anomaly_type.is_dir():
                         continue
-                    if anomaly_type.is_dir():
-                        for img_file in anomaly_type.glob("*.png"):
-                            image_paths.append(img_file)
-                            labels.append(1)  # 异常
+                    for img_file in anomaly_type.glob("*.png"):
+                        mask_path = (category_path / "ground_truth"
+                                     / anomaly_type.name
+                                     / f"{img_file.stem}_mask.png")
+                        image_paths.append(img_file)
+                        labels.append(1)  # 异常
+                        mask_paths.append(mask_path if mask_path.is_file()
+                                          else None)
 
-        return image_paths, labels
+        return image_paths, labels, mask_paths
 
     def _get_transform(self) -> A.Compose:
         """获取数据增强变换"""
@@ -149,11 +157,26 @@ class MVTecADDataset(Dataset):
         transformed = self.transform(image=image)
         image_tensor = transformed["image"]
 
-        return {
+        item = {
             "image": image_tensor,
             "label": torch.tensor(label, dtype=torch.float32),
             "path": str(img_path)
         }
+        # 真值 mask（仅异常测试样本有）；缺失时返回全零 mask，
+        # 由评估器按“无标注区域”处理。
+        mask_path = self.mask_paths[idx]
+        if mask_path is not None:
+            mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+            if mask is None:
+                raise FileNotFoundError(f"mask 读取失败: {mask_path}")
+            mask = cv2.resize(mask, (self.image_size, self.image_size),
+                              interpolation=cv2.INTER_NEAREST)
+            mask_t = torch.from_numpy((mask > 0).astype(np.float32)).unsqueeze(0)
+        else:
+            mask_t = torch.zeros((1, self.image_size, self.image_size),
+                                 dtype=torch.float32)
+        item["mask"] = mask_t
+        return item
 
     def get_class_distribution(self) -> Dict[int, int]:
         """获取类别分布"""
@@ -205,6 +228,7 @@ class MVTecADDataset(Dataset):
         # 根据索引选择数据
         subset.image_paths = [self.image_paths[i] for i in indices]
         subset.labels = [self.labels[i] for i in indices]
+        subset.mask_paths = [self.mask_paths[i] for i in indices]
         subset.transform = self.transform
 
         return subset

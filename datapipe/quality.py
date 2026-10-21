@@ -104,7 +104,11 @@ def validate_record(rec: dict, dataset_root: Path,
         ann = (rec.get("meta") or {}).get("annotation") or {}
         defect_type = ann.get("defect_type", "")
         if defect_type and defect_type != "good":
-            zh = DEFECT_TYPE_ZH.get(defect_type, defect_type)
+            if defect_type not in DEFECT_TYPE_ZH:
+                errors.append(
+                    f"一致性校验失败: 未收录的缺陷类型「{defect_type}」")
+                return errors
+            zh = DEFECT_TYPE_ZH[defect_type]
             if zh not in rec["response"]:
                 errors.append(
                     f"一致性校验失败: response 未包含缺陷类型「{zh}」")
@@ -145,6 +149,19 @@ def config_hash(config_path: Path) -> str:
     return hashlib.sha256(Path(config_path).read_bytes()).hexdigest()[:16]
 
 
+def code_hash() -> str:
+    """数据管线源码的 SHA256（前 16 位），用于区分同配置下的代码变更。"""
+    src_dir = Path(__file__).resolve().parent
+    h = hashlib.sha256()
+    for name in sorted(("annotation.py", "quality.py", "rewrite.py",
+                        "pipeline_a.py", "pipeline_b.py")):
+        path = src_dir / name
+        if path.is_file():
+            h.update(name.encode("utf-8"))
+            h.update(path.read_bytes())
+    return h.hexdigest()[:16]
+
+
 def next_version_dir(versions_dir: Path) -> Path:
     """返回下一个版本目录 versions/v<N>/（N 从 1 递增）。"""
     versions_dir = Path(versions_dir)
@@ -159,17 +176,27 @@ def next_version_dir(versions_dir: Path) -> Path:
 
 
 def write_version(records: list[dict], versions_dir: Path,
-                  manifest_extra: dict) -> tuple[Path, dict]:
-    """写入一个版本：dataset.jsonl + manifest.json。返回 (版本目录, manifest)。"""
+                  manifest_extra: dict, root: Path | None = None
+                  ) -> tuple[Path, dict]:
+    """写入一个版本：dataset.jsonl + manifest.json。返回 (版本目录, manifest)。
+
+    manifest 中的 output 使用相对 root（默认 versions_dir 的上一级）的路径，
+    避免把本机绝对路径写进可提交的产物。
+    """
     vdir = next_version_dir(versions_dir)
     jsonl_path = vdir / "dataset.jsonl"
     with jsonl_path.open("w", encoding="utf-8") as f:
         for rec in records:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    path_root = Path(root) if root is not None else Path(versions_dir).parent
+    try:
+        output = jsonl_path.relative_to(path_root).as_posix()
+    except ValueError:
+        output = jsonl_path.name
     manifest = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": vdir.name,
-        "output": str(jsonl_path),
+        "output": output,
         "num_records": len(records),
         **manifest_extra,
     }

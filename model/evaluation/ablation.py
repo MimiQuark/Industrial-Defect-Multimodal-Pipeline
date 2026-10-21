@@ -253,7 +253,12 @@ class AblationRunner:
                         return default
                 return value
 
-        wrapped_config = ConfigWrapper(model_config)
+        # FocusStyleGAN 读取的是顶层 generator./discriminator./attention. 键，
+        # 而 model_config 是完整配置（这些键在 model.* 下）。只传模型视图，
+        # 否则消融开关全部失效。
+        model_view = copy.deepcopy(model_config.get('model', {}))
+        model_view['data'] = copy.deepcopy(model_config.get('data', {}))
+        wrapped_config = ConfigWrapper(model_view)
 
         if ablation_config.use_dual_branch:
             # 使用标准双分支模型

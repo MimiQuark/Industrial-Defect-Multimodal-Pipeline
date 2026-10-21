@@ -5,6 +5,8 @@
 包含训练循环、损失函数和Optuna集成
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import time
@@ -12,7 +14,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-import optuna
+try:  # Optuna 仅在超参搜索时需要，训练主流程不依赖
+    import optuna
+except ImportError:  # pragma: no cover - 取决于运行环境
+    optuna = None
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -87,9 +92,9 @@ class PerceptualLoss(nn.Module):
         Returns:
             感知损失值
         """
-        # 归一化
-        x = (x - self.mean) / self.std
-        y = (y - self.mean) / self.std
+        # 输入张量在 [-1, 1] 域，先映射到 [0, 1] 再做 ImageNet 归一化
+        x = ((x + 1) / 2 - self.mean) / self.std
+        y = ((y + 1) / 2 - self.mean) / self.std
 
         loss = x.new_zeros(())
         for layer, name in zip(self.layers, self.layer_name_list):
@@ -651,6 +656,9 @@ class OptunaOptimizer:
             device: 设备
             logger: 日志记录器
         """
+        if optuna is None:
+            raise ImportError(
+                "OptunaOptimizer 需要 optuna 依赖，请先执行 pip install optuna")
         self.config = config
         self.dataset = dataset
         self.device = device

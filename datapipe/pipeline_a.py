@@ -15,16 +15,17 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from datapipe.annotation import scan_mvtec_dataset            # noqa: E402
-from datapipe.quality import (config_hash, dedup_by_phash,    # noqa: E402
-                              load_config, validate_records, write_version)
+from datapipe.quality import (code_hash, config_hash,         # noqa: E402
+                              dedup_by_phash, load_config,
+                              validate_records, write_version)
 from datapipe.rewrite import rewrite_annotations              # noqa: E402
 
 
@@ -52,8 +53,14 @@ def main() -> int:
     # 2. 改写为自然语言 {instruction, response}
     records, mode = rewrite_annotations(annotations, dataset_root,
                                         cfg["vlm"], seed)
-    mode_zh = "VLM 改写" if mode == "vlm" else "确定性模板降级（无 API key）"
-    print(f"[2/4] 改写模式: {mode_zh}，生成 {len(records)} 条记录")
+    mode_counts = Counter(r["meta"]["rewrite_mode"] for r in records)
+    mode_zh = {
+        "vlm": "VLM 改写（全部样本成功）",
+        "vlm_partial_fallback": "VLM 改写（部分样本失败，已回退模板）",
+        "template_fallback": "确定性模板降级（无 API key 或全部回退）",
+    }.get(mode, mode)
+    print(f"[2/4] 改写模式: {mode_zh}，生成 {len(records)} 条记录"
+          f"（{dict(mode_counts)}）")
 
     # 3. 感知哈希去重
     kept, dropped = dedup_by_phash(
@@ -75,23 +82,43 @@ def main() -> int:
     for f_ in failed:
         print(f"      - 校验失败: {f_['image']}: {f_['errors']}")
 
+    if not passed:
+        print("❌ 没有任何记录通过校验，未写入版本。请检查上面的校验错误。",
+              file=sys.stderr)
+        return 1
+    if pass_rate < 0.5:
+        print(f"⚠️  校验通过率仅 {pass_rate:.1%}，产物质量可能不足，请核查。",
+              file=sys.stderr)
+
+    try:
+        dataset_root_manifest = dataset_root.resolve().relative_to(
+            PROJECT_ROOT.resolve()).as_posix()
+    except ValueError:
+        dataset_root_manifest = str(dataset_root)
+
     vdir, manifest = write_version(passed, PROJECT_ROOT / cfg["paths"]["versions_dir"], {
         "pipeline": "A",
-        "dataset_root": str(dataset_root),
+        "dataset_root": dataset_root_manifest,
         "data_basis": "synthetic demo" if "demo" in dataset_root.name else "mvtec_ad",
         "rewrite_mode": mode,
+        "rewrite_mode_counts": dict(mode_counts),
         "seed": seed,
         "config_hash": config_hash(args.config),
+        "code_hash": code_hash(),
         "input_stats": {
             "num_images": len(annotations),
             "num_defect": n_defect,
             "num_good": len(annotations) - n_defect,
         },
         "dedup": {"removed": len(dropped), "kept": len(kept),
-                  "removed_images": [d["image"] for d in dropped]},
+                  "removed_images": [d["image"] for d in dropped],
+                  "removed_modes": {
+                      d["image"]: d.get("meta", {}).get("rewrite_mode", "unknown")
+                      for d in dropped}},
+
         "validation": {"passed": len(passed), "failed": len(failed),
                        "pass_rate": pass_rate},
-    })
+    }, root=PROJECT_ROOT)
     print(f"\n✅ 管线 A 完成 → {vdir}")
     print(f"   dataset.jsonl: {len(passed)} 条；manifest.json 已写入")
     return 0

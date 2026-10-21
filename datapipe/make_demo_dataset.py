@@ -37,6 +37,27 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 IMAGE_SIZE = 256
+# 标记文件：只有带此标记（或为空）的目录才允许被重新生成时清空。
+SYNTHETIC_MARKER = ".synthetic_demo"
+
+
+def _prepare_output_dir(root: Path) -> Path:
+    """校验并清空输出目录，防止误删非合成目录。"""
+    root = Path(root)
+    resolved = root.resolve()
+    if resolved in (PROJECT_ROOT.resolve(), PROJECT_ROOT.resolve().parent):
+        raise ValueError(f"拒绝把项目目录作为输出并清空: {root}")
+    if root.exists():
+        if any(root.iterdir()) and not (root / SYNTHETIC_MARKER).is_file():
+            raise ValueError(
+                f"拒绝清空非合成目录（缺少 {SYNTHETIC_MARKER} 标记）: {root}。"
+                f"如确认可删除，请先手动清理。")
+        shutil.rmtree(root)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / SYNTHETIC_MARKER).write_text(
+        "程序化合成的演示数据，可由 datapipe.make_demo_dataset 重新生成。\n",
+        encoding="utf-8")
+    return root
 # 品类 → 背景基色（模拟不同工业材质）
 CATEGORY_COLORS = {
     "bottle": (168, 178, 188),
@@ -104,10 +125,8 @@ def build_demo_dataset(root: Path, seed: int = 42,
                        n_per_defect: int = 4,
                        defect_types: tuple[str, ...] = ("scratch", "stain"),
                        with_duplicate: bool = True) -> dict:
-    """生成演示数据集，返回统计信息 dict。重复运行会先清空目标目录。"""
-    root = Path(root)
-    if root.exists():
-        shutil.rmtree(root)
+    """生成演示数据集，返回统计信息 dict。仅清空带合成标记（或为空）的目录。"""
+    root = _prepare_output_dir(Path(root))
     categories = categories or list(CATEGORY_COLORS)
     rng = np.random.RandomState(seed)
     stats = {"categories": {}, "total_images": 0, "total_masks": 0}
@@ -155,9 +174,7 @@ def build_fake_generated(out_dir: Path, seed: int = 123,
     每个品类 n_ok 张分布正常的伪合成图 + n_bad 张刻意劣化图
     （第 1 张亮度过曝、第 2 张对比度塌陷），预期被启发式过滤剔除。
     """
-    out_dir = Path(out_dir)
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
+    out_dir = _prepare_output_dir(Path(out_dir))
     categories = categories or list(CATEGORY_COLORS)
     rng = np.random.RandomState(seed)
     total = 0

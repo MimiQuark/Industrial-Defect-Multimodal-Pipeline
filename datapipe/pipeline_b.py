@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -221,6 +222,12 @@ def score_all(images: list[Path], vlm_cfg: dict, ref: dict,
     for s in scored:
         s["mean"] = round((s["naturalness"] + s["fusion"]
                            + s["usability"]) / 3, 2)
+    if mode == "vlm":
+        n_vlm = sum(1 for s in scored if s["_mode"] == "vlm")
+        if n_vlm == 0:
+            mode = "heuristic_fallback"
+        elif n_vlm < len(scored):
+            mode = "vlm_partial_fallback"
     return scored, mode
 
 
@@ -244,10 +251,18 @@ def write_report(scored: list[dict], mode: str, threshold: float,
         dist_lines.append(
             f"| {d} | " + " | ".join(str(counts[i]) for i in range(1, 6)) + " |")
 
-    mode_zh = ("VLM 打分（OpenAI 兼容接口）" if mode == "vlm"
-               else "启发式降级打分（无 API key，基于亮度/对比度/边缘密度分布差异，非 VLM 输出）")
-    ckpt_line = (f"✅ 可用：{ckpt_status['detail']}" if ckpt_status["available"]
-                 else f"❌ 不可用：{ckpt_status['detail']}；"
+    mode_zh = {
+        "vlm": "VLM 打分（OpenAI 兼容接口，全部样本成功）",
+        "vlm_partial_fallback": "VLM 打分（部分样本失败，已回退启发式）",
+        "heuristic_fallback": "启发式降级打分（无 API key 或全部回退，基于亮度/对比度/边缘密度分布差异，非 VLM 输出）",
+    }.get(mode, mode)
+    mode_counts = Counter(s.get("_mode", "unknown") for s in scored)
+    mode_detail = (f"VLM {mode_counts.get('vlm', 0)} 张，"
+                   f"启发式回退 {mode_counts.get('heuristic_fallback', 0)} 张")
+    ckpt_detail = str(ckpt_status["detail"]).replace(
+        str(PROJECT_ROOT), "<repo-root>").replace("\\", "/")
+    ckpt_line = (f"✅ 可用：{ckpt_detail}" if ckpt_status["available"]
+                 else f"❌ 不可用：{ckpt_detail}；"
                       f"下游（过滤后数据回灌训练的）对比实验为后续工作")
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -267,6 +282,7 @@ def write_report(scored: list[dict], mode: str, threshold: float,
         "## 运行状态",
         "",
         f"- 打分模式：**{mode_zh}**",
+        f"- 打分明细：{mode_detail}",
         f"- checkpoint 状态：{ckpt_line}",
         f"- 输入目录：`{rel(str(input_dir))}`",
         f"- 过滤阈值：三维均分 < {threshold} 剔除",

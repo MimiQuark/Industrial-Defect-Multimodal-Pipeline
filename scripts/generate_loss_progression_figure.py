@@ -8,12 +8,13 @@ from matplotlib.gridspec import GridSpec
 # ---- 1. 运行消融实验获取样本 ----
 from model.evaluation.ablation import AblationRunner, AblationConfig, ABLATION_CONFIGS
 from model.models.focus_stylegan import FocusStyleGAN
-from model.data.dataset import MVTecDataset
-from model.utils.config import load_config
+from model.data.loader import MVTecADDataset
+from model.utils.config import Config
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-config = load_config("work/configs/default.yaml")
-dataset = MVTecDataset("datasets/mvtec_anomaly_detection", category="transistor")
+config = Config("core/integrated_config.yaml")
+dataset = MVTecADDataset("datasets/mvtec_anomaly_detection",
+                         category="transistor", mode="test", augment=False)
 output_dir = Path("outputs/loss_progression")
 
 # 三个配置
@@ -41,7 +42,7 @@ for label, cfg in configs.items():
         sample_images[label] = torch.load(sample_path)
 
   # ---- 2. 绘制四列对比图 ----
-input_img = ...  # 从dataset取一张正常样本
+input_img = dataset[0]["image"]  # 从 dataset 取一张正常样本
 
 fig = plt.figure(figsize=(16, 6))
 gs = GridSpec(1, 4, figure=fig)

@@ -16,7 +16,7 @@ AutoDL 类付费平台（3090/4090 约 1.2-2.5 元/小时，2026 年行情，以
 
 ## 1. 准备两个输入数据集
 
-1. **项目代码**：把本地项目 `Industrial-Defect-Gan-Augmentation-main` 打包 zip，
+1. **项目代码**：把本地项目 `Industrial-Defect-Multimodal-Pipeline` 打包 zip，
    在 Kaggle → Datasets → New Dataset 上传（私有即可）。
 2. **MVTec AD**：Kaggle 搜索 `mvtec ad` 有公开镜像可直接 Add Input；
    也可官网注册下载原版（https://www.mvtec.com/company/research/datasets/mvtec-ad ）
@@ -87,7 +87,7 @@ python -m datapipe.pipeline_a --root datasets/mvtec_anomaly_detection
 
 ```bash
 # 方式 A：scp 整个项目（实例的 ssh 地址/端口在平台控制台复制）
-scp -P <端口> -r "E:\KimiData\kimi\workspace\1\Industrial-Defect-Gan-Augmentation-main\Industrial-Defect-Gan-Augmentation-main" root@<实例地址>:/root/
+scp -P <端口> -r "<repo-root>" root@<实例地址>:/root/
 
 # 方式 B：项目若已推 Git，云端直接 git clone / git pull
 
@@ -97,7 +97,7 @@ scp -P <端口> -r "E:\KimiData\kimi\workspace\1\Industrial-Defect-Gan-Augmentat
 上传后在云端实例里：
 
 ```bash
-cd /root/Industrial-Defect-Gan-Augmentation-main
+cd /root/Industrial-Defect-Multimodal-Pipeline
 pip install -r cloud/requirements-cloud.txt
 ```
 
@@ -160,7 +160,7 @@ python cloud/train_cloud.py --category bottle --resume checkpoints/checkpoint_ep
 在**本地 Windows** 终端执行：
 
 ```bash
-scp -P <端口> -r root@<实例地址>:/root/Industrial-Defect-Gan-Augmentation-main/checkpoints "E:\KimiData\kimi\workspace\1\Industrial-Defect-Gan-Augmentation-main\Industrial-Defect-Gan-Augmentation-main\"
+scp -P <端口> -r root@<实例地址>:/root/Industrial-Defect-Multimodal-Pipeline/checkpoints "<repo-root>"
 ```
 
 ## 7. 与 datapipe 管线衔接（本地执行）

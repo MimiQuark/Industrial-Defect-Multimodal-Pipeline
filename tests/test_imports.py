@@ -13,13 +13,18 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def test_imports():
     """测试所有关键模块导入"""
     modules_to_test = [
-        ("src.data.loader", ["MVTecADDataset", "create_dataloader"]),
-        ("src.models.focus_stylegan", ["FocusStyleGAN"]),
-        ("src.training.trainer", ["FocusStyleGANTrainer", "OptunaOptimizer"]),
-        ("src.evaluation.evaluator", ["Evaluator"]),
-        ("src.augmentation.augmentor", ["Augmentor"]),
-        ("src.utils.config", ["Config"]),
-        ("src.utils.logger", ["setup_logger"]),
+        ("model.data.loader", ["MVTecADDataset", "create_dataloader"]),
+        ("model.models.focus_stylegan", ["FocusStyleGAN"]),
+        ("model.training.trainer", ["FocusStyleGANTrainer", "OptunaOptimizer"]),
+        ("model.evaluation.evaluator", ["Evaluator"]),
+        ("model.augmentation.augmentor", ["Augmentor"]),
+        ("model.utils.config", ["Config"]),
+        ("model.utils.logger", ["setup_logger"]),
+        ("datapipe.annotation", ["Annotation", "DEFECT_TYPE_ZH"]),
+        ("datapipe.quality", ["validate_record", "write_version"]),
+        ("datapipe.rewrite", ["rewrite_annotations"]),
+        ("datapipe.pipeline_a", ["main"]),
+        ("datapipe.pipeline_b", ["main"]),
     ]
 
     print("=" * 60)
