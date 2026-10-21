@@ -26,40 +26,95 @@ import numpy as np
 from PIL import Image
 
 # 缺陷类型英文目录名 → 中文描述
+#
+# 覆盖 MVTec AD 15 个品类的全部测试目录名。漏掉某个目录名时 VLM 改写会
+# 回退成英文目录名，而 quality.validate_record 要求 response 中出现中文
+# 缺陷名，导致该样本被静默判为不一致——因此新增目录名时必须同步本表。
 DEFECT_TYPE_ZH = {
     "good": "无缺陷",
-    "scratch": "划痕",
-    "stain": "污点",
-    "broken_teeth": "断齿",
-    "bent": "弯曲变形",
+    # bottle
     "broken_large": "大面积破损",
     "broken_small": "小面积破损",
+    # cable
+    "bent_wire": "线材弯曲",
     "cable_swap": "线缆错位",
     "combined": "复合缺陷",
-    "contamination": "污染",
-    "crack": "裂纹",
-    "cut": "切口",
-    "faulty_imprint": "印刷瑕疵",
-    "flip": "翻转错误",
-    "glue": "溢胶",
-    "glue_strip": "胶条缺陷",
-    "gray_stroke": "灰色划痕",
-    "hole": "孔洞",
-    "misplaced": "位置偏移",
+    "cut_inner_insulation": "内绝缘层割破",
+    "cut_outer_insulation": "外绝缘层割破",
     "missing_cable": "线缆缺失",
-    "missing_teeth": "缺齿",
-    "poke": "戳痕",
+    "missing_wire": "线材缺失",
     "poke_insulation": "绝缘层戳破",
+    # capsule
+    "crack": "裂纹",
+    "faulty_imprint": "印刷瑕疵",
+    "poke": "戳痕",
+    "scratch": "划痕",
+    "squeeze": "挤压变形",
+    "squeezed": "挤压变形",
+    # carpet / grid / leather / wood / zipper
+    "color": "颜色异常",
+    "cut": "切口",
+    "hole": "孔洞",
+    "metal_contamination": "金属污染",
+    "thread": "线头",
+    "bent": "弯曲变形",
+    "broken": "破损",
+    "glue": "溢胶",
+    "fold": "褶皱",
+    # hazelnut / pill
     "print": "印刷缺陷",
-    "rough": "表面粗糙",
+    "contamination": "污染",
+    "pill_type": "药片类型错误",
+    # metal_nut
+    "flip": "翻转错误",
+    # screw
+    "manipulated_front": "前端篡改",
     "scratch_head": "头部划痕",
     "scratch_neck": "颈部划痕",
-    "squeezed": "挤压变形",
-    "thread": "线头",
     "thread_side": "侧边线头",
     "thread_top": "顶部线头",
-    "transistor": "晶体管缺陷",
+    # tile
+    "cracked": "开裂",
+    "glue_strip": "胶条缺陷",
+    "gray_stroke": "灰色划痕",
+    "oil": "油污",
+    "rough": "表面粗糙",
+    # toothbrush
+    "defective": "缺陷",
+    # transistor
+    "bent_lead": "引脚弯曲",
+    "cut_lead": "引脚割断",
+    "damaged_case": "外壳损坏",
+    "misplaced": "位置偏移",
+    # wood
+    "liquid": "液体污染",
+    # zipper
+    "broken_teeth": "断齿",
+    "fabric_border": "布边缺陷",
+    "fabric_interior": "布面内部缺陷",
+    "split_teeth": "齿裂",
+    "stain": "污点",  # 合成 demo 使用
 }
+
+# MVTec AD 官方 15 个品类的全部测试目录名（不含合成 demo 的 stain）。
+MVTEC_DEFECT_TYPES = frozenset({
+    "good",
+    "broken_large", "broken_small",
+    "bent_wire", "cable_swap", "combined", "cut_inner_insulation",
+    "cut_outer_insulation", "missing_cable", "missing_wire", "poke_insulation",
+    "crack", "faulty_imprint", "poke", "scratch", "squeeze",
+    "color", "cut", "hole", "metal_contamination", "thread",
+    "bent", "broken", "glue", "fold",
+    "print", "contamination", "pill_type",
+    "flip",
+    "manipulated_front", "scratch_head", "scratch_neck", "thread_side",
+    "thread_top",
+    "cracked", "glue_strip", "gray_stroke", "oil", "rough",
+    "defective",
+    "bent_lead", "cut_lead", "damaged_case", "misplaced",
+    "liquid",
+    "broken_teeth", "fabric_border", "fabric_interior", "split_teeth",
+})
 
 
 @dataclass
@@ -98,20 +153,30 @@ def position_zh_from_centroid(cx: float, cy: float) -> str:
     return f"{col}{row}区域"
 
 
-def extract_annotation_from_mask(mask_path: Path) -> dict:
+def extract_annotation_from_mask(mask_path: Path,
+                                expected_size: tuple[int, int] | None = None
+                                ) -> dict:
     """从单张 mask 提取面积占比、bbox、质心、方位。
 
     mask 约定：前景（缺陷区域）为任意非零像素。
     返回 dict：area_ratio / bbox / centroid / position_zh。
+
+    expected_size 为对应原图的 (W, H)。尺寸不一致或 mask 无前景时抛
+    ValueError——缺陷样本的空 mask 属于数据错误，不能当成“有缺陷但
+    area_ratio=0、位置=中央区域”继续产出标注。
     """
-    arr = np.asarray(Image.open(mask_path).convert("L"))
+    with Image.open(mask_path) as mask_img:
+        arr = np.asarray(mask_img.convert("L"))
+    h, w = arr.shape
+    if expected_size is not None and (w, h) != tuple(expected_size):
+        raise ValueError(
+            f"mask 尺寸 {w}x{h} 与图像尺寸 {expected_size[0]}x{expected_size[1]} "
+            f"不一致: {mask_path}")
     fg = arr > 0
-    h, w = fg.shape
     total = h * w
     ys, xs = np.nonzero(fg)
     if len(xs) == 0:
-        return {"area_ratio": 0.0, "bbox": None, "centroid": None,
-                "position_zh": "中央区域"}
+        raise ValueError(f"缺陷 mask 中没有前景像素: {mask_path}")
     area_ratio = float(len(xs)) / float(total)
     bbox = [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]
     cx = float(xs.mean()) / w
@@ -146,7 +211,11 @@ def scan_mvtec_dataset(root: Path) -> list[Annotation]:
             continue
         for defect_dir in sorted(p for p in test_dir.iterdir() if p.is_dir()):
             defect_type = defect_dir.name
-            defect_type_zh = DEFECT_TYPE_ZH.get(defect_type, defect_type)
+            if defect_type not in DEFECT_TYPE_ZH:
+                raise ValueError(
+                    f"未收录的缺陷目录名 {defect_type!r}（{defect_dir}）。"
+                    f"请先补充 DEFECT_TYPE_ZH，否则 VLM 一致性校验会静默丢弃样本。")
+            defect_type_zh = DEFECT_TYPE_ZH[defect_type]
             for img_path in sorted(defect_dir.glob("*.png")):
                 rel_img = str(img_path.relative_to(root)).replace("\\", "/")
                 w, h = Image.open(img_path).size
@@ -163,7 +232,7 @@ def scan_mvtec_dataset(root: Path) -> list[Annotation]:
                     if not mask_path.is_file():
                         raise FileNotFoundError(
                             f"找不到与 {rel_img} 对应的 mask: {mask_path}")
-                    info = extract_annotation_from_mask(mask_path)
+                    info = extract_annotation_from_mask(mask_path, (w, h))
                     ann = Annotation(
                         image=rel_img, category=cat_dir.name,
                         defect_type=defect_type, defect_type_zh=defect_type_zh,

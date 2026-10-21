@@ -3,7 +3,7 @@
 ## 运行状态
 
 - 打分模式：**VLM 打分（OpenAI 兼容接口）**
-- checkpoint 状态：❌ 不可用：checkpoint 目录不存在: E:\KimiData\kimi\workspace\1\Industrial-Defect-Gan-Augmentation-main\Industrial-Defect-Gan-Augmentation-main\checkpoints；下游（过滤后数据回灌训练的）对比实验为后续工作
+- checkpoint 状态：❌ 不可用：checkpoint 目录不存在: checkpoints；下游（过滤后数据回灌训练的）对比实验为后续工作
 - 输入目录：`datapipe/demo_generated`
 - 过滤阈值：三维均分 < 3.0 剔除
 - 参考分布：27 张正常样本（亮度 μ=0.649，对比度 μ=0.044，边缘密度 μ=0.0266）

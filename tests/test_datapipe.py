@@ -14,6 +14,7 @@ datapipe 数据管线测试（无 pytest 依赖，直接 python tests/test_datap
 """
 
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -25,7 +26,8 @@ from PIL import Image, ImageDraw
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from datapipe.annotation import (extract_annotation_from_mask,          # noqa: E402
+from datapipe.annotation import (DEFECT_TYPE_ZH, MVTEC_DEFECT_TYPES,    # noqa: E402
+                                 extract_annotation_from_mask,
                                  position_zh_from_centroid, scan_mvtec_dataset)
 from datapipe.make_demo_dataset import build_demo_dataset               # noqa: E402
 from datapipe.pipeline_b import heuristic_score, image_stats, reference_distribution  # noqa: E402
@@ -53,13 +55,39 @@ def test_mask_annotation():
         assert abs(info["centroid"][0] - 80 / 256) < 0.01
         assert abs(info["centroid"][1] - 100 / 256) < 0.01
         assert info["position_zh"] == "左侧区域", info["position_zh"]
-        # 空 mask
+        # 空 mask：缺陷样本的空 mask 属于数据错误，必须显式失败
         empty = Image.new("L", (256, 256), 0)
         empty_path = Path(td) / "empty.png"
         empty.save(empty_path)
-        e = extract_annotation_from_mask(empty_path)
-        assert e["area_ratio"] == 0.0 and e["bbox"] is None
-    print("   ✓ 面积/bbox/质心/方位断言通过")
+        try:
+            extract_annotation_from_mask(empty_path)
+        except ValueError as e:
+            assert "前景" in str(e), e
+        else:
+            raise AssertionError("空 mask 应抛 ValueError")
+        # 尺寸不一致必须显式失败
+        small = Image.new("L", (128, 128), 255)
+        small_path = Path(td) / "small.png"
+        small.save(small_path)
+        try:
+            extract_annotation_from_mask(small_path, (256, 256))
+        except ValueError as e:
+            assert "尺寸" in str(e), e
+        else:
+            raise AssertionError("mask/图像尺寸不一致应抛 ValueError")
+    print("   ✓ 面积/bbox/质心/方位/异常输入断言通过")
+
+
+def test_defect_type_mapping():
+    """MVTec AD 全部缺陷目录名都有中文映射（防止 VLM 一致性校验静默丢弃）"""
+    print("[1b] 缺陷类型映射完整性...")
+    missing = sorted(MVTEC_DEFECT_TYPES - set(DEFECT_TYPE_ZH))
+    assert not missing, f"缺少中文映射: {missing}"
+    for en in MVTEC_DEFECT_TYPES:
+        zh = DEFECT_TYPE_ZH[en]
+        assert zh and zh != en, f"{en} 未映射为中文: {zh!r}"
+    assert len(DEFECT_TYPE_ZH) >= len(MVTEC_DEFECT_TYPES)
+    print(f"   ✓ {len(MVTEC_DEFECT_TYPES)} 个 MVTec 缺陷目录名全部有中文映射")
 
 
 def test_position_grid():
@@ -155,6 +183,48 @@ def test_template_reproducibility():
     print("   ✓ 同种子两次运行输出一致")
 
 
+def test_partial_fallback_accounting():
+    """部分 VLM 失败时应标为 vlm_partial_fallback，而非整体 vlm"""
+    print("[5b] VLM 部分回退记账...")
+    import datapipe.rewrite as rewrite_mod
+    with tempfile.TemporaryDirectory() as td:
+        root = build_demo_dataset(Path(td) / "ds", seed=3, categories=["bottle"],
+                                  n_train_good=1, n_test_good=2,
+                                  n_per_defect=2, with_duplicate=False)
+        anns = scan_mvtec_dataset(Path(root["root"]))
+        orig = rewrite_mod.vlm_rewrite
+
+        def fake_vlm(ann, image_path, vlm_cfg, api_key, rng):
+            if not ann.has_defect:  # 正常样本模拟调用失败
+                raise RuntimeError("simulated vlm failure")
+            return {"instruction": "请分析该图像",
+                    "response": f"该图像存在{ann.defect_type_zh}缺陷，判定不合格。"}
+
+        rewrite_mod.vlm_rewrite = fake_vlm
+        old_key = os.environ.get("DASHSCOPE_API_KEY")
+        os.environ["DASHSCOPE_API_KEY"] = "test-key"
+        try:
+            recs, mode = rewrite_annotations(
+                anns, Path(root["root"]),
+                {"enable_vlm": True, "concurrency": 1,
+                 "base_url": "http://example.invalid", "model": "fake"},
+                seed=5)
+        finally:
+            rewrite_mod.vlm_rewrite = orig
+            if old_key is None:
+                os.environ.pop("DASHSCOPE_API_KEY", None)
+            else:
+                os.environ["DASHSCOPE_API_KEY"] = old_key
+        assert mode == "vlm_partial_fallback", mode
+        by_mode = {}
+        for r in recs:
+            by_mode[r["meta"]["rewrite_mode"]] = \
+                by_mode.get(r["meta"]["rewrite_mode"], 0) + 1
+        assert by_mode.get("vlm", 0) == 4, by_mode
+        assert by_mode.get("template_fallback", 0) == 2, by_mode
+    print("   ✓ 4 条 VLM + 2 条回退，整体标记为 vlm_partial_fallback")
+
+
 def test_heuristic_scoring():
     """管线 B 启发式打分：过曝/塌陷图应得低分"""
     print("[6] 启发式降级打分...")
@@ -220,9 +290,10 @@ def main() -> int:
     print("datapipe 数据管线测试")
     print("=" * 60)
     tests = [
-        test_mask_annotation, test_position_grid, test_dhash_dedup,
-        test_validation, test_template_reproducibility,
-        test_heuristic_scoring, test_end_to_end,
+        test_mask_annotation, test_defect_type_mapping, test_position_grid,
+        test_dhash_dedup, test_validation, test_template_reproducibility,
+        test_partial_fallback_accounting, test_heuristic_scoring,
+        test_end_to_end,
     ]
     failed = 0
     for t in tests:

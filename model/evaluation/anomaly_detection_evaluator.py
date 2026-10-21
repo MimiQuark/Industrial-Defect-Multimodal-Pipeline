@@ -19,6 +19,9 @@ from typing import Dict, List, Tuple, Optional
 from tqdm import tqdm
 import cv2
 
+# NumPy 2.0 移除了 np.trapz，统一使用 np.trapezoid（1.x 回退到 np.trapz）
+_trapz = getattr(np, "trapezoid", None) or getattr(np, "trapz")
+
 
 class AnomalyDetectionEvaluator:
     """异常检测评估器"""
@@ -415,8 +418,15 @@ class AnomalyDetectionEvaluator:
         if len(anomaly_maps) == 0 or len(ground_truth_masks) == 0:
             return 0.0
 
-        # 收集所有连通区域
-        all_region_scores = []  # 每个区域在阈值下的检测率
+        # 统一阈值网格：所有图/区域共用同一组阈值，检测率才可直接平均。
+        t_min = min(float(am.min()) for am in anomaly_maps)
+        t_max = max(float(am.max()) for am in anomaly_maps)
+        if not (np.isfinite(t_min) and np.isfinite(t_max)) or t_max <= t_min:
+            return 0.0
+        thresholds_global = np.linspace(t_min, t_max, n_thresholds)
+
+        # 收集所有连通区域在各全局阈值下的检测率
+        all_region_scores = []
 
         for anomaly_map, gt_mask in zip(anomaly_maps, ground_truth_masks):
             # 确保尺寸一致
@@ -426,47 +436,25 @@ class AnomalyDetectionEvaluator:
                 scale_w = gt_mask.shape[1] / anomaly_map.shape[1]
                 anomaly_map = zoom(anomaly_map, (scale_h, scale_w), order=1)
 
-            # 查找真值中的连通区域
             from scipy.ndimage import label
             labeled, n_regions = label(gt_mask > 0.5)
-
             if n_regions == 0:
                 continue
-
-            # 对每个连通区域计算检测率曲线
-            thresholds = np.linspace(anomaly_map.min(), anomaly_map.max(), n_thresholds)
 
             for region_id in range(1, n_regions + 1):
                 region_mask = (labeled == region_id)
                 region_size = np.sum(region_mask)
-
                 if region_size < 4:  # 忽略过小的区域
                     continue
-
-                # 在不同阈值下计算该区域的检测率
-                detection_rates = []
-                for thresh in thresholds:
-                    binary_pred = (anomaly_map >= thresh).astype(np.float64)
-                    # 区域内的正确检测比例
-                    detected = np.sum(binary_pred * region_mask)
-                    detection_rate = detected / region_size
-                    detection_rates.append(detection_rate)
-
-                all_region_scores.append(np.array(detection_rates))
+                detection_rates = [
+                    np.sum((anomaly_map >= thresh) * region_mask) / region_size
+                    for thresh in thresholds_global
+                ]
+                all_region_scores.append(np.asarray(detection_rates,
+                                                    dtype=np.float64))
 
         if len(all_region_scores) == 0:
             return 0.0
-
-        # 计算全局FPR (基于所有像素)
-        # 对每个阈值，计算平均检测率和全局FPR
-        thresholds_global = np.linspace(
-            np.mean([am.min() for am in anomaly_maps]),
-            np.mean([am.max() for am in anomaly_maps]),
-            n_thresholds
-        )
-
-        mean_detection_rates = []
-        fpr_values = []
 
         # 收集所有正常像素
         all_normal_mask = np.concatenate([
@@ -476,41 +464,39 @@ class AnomalyDetectionEvaluator:
             am.flatten() for am in anomaly_maps
         ])
 
-        for thresh in thresholds_global:
-            # 平均每个区域的检测率
-            region_detection_sum = 0.0
-            for region_scores in all_region_scores:
-                # 找到最接近的阈值索引
-                idx = np.argmin(np.abs(thresholds - thresh))
-                region_detection_sum += region_scores[min(idx, len(region_scores) - 1)]
+        # 每个全局阈值下的平均区域检测率与全局 FPR
+        mean_detection_rates = []
+        fpr_values = []
+        for thresh_idx, thresh in enumerate(thresholds_global):
+            mean_detection_rates.append(float(np.mean(
+                [rs[thresh_idx] for rs in all_region_scores])))
 
-            mean_dr = region_detection_sum / len(all_region_scores)
-            mean_detection_rates.append(mean_dr)
-
-            # 全局FPR
             binary_global = (all_anomaly_scores >= thresh).astype(np.float64)
             fp = np.sum(binary_global * all_normal_mask)
             tn = np.sum((1 - binary_global) * all_normal_mask)
-            fpr = fp / (fp + tn + 1e-8)
-            fpr_values.append(fpr)
+            fpr_values.append(fp / (fp + tn + 1e-8))
 
-        mean_detection_rates = np.array(mean_detection_rates)
-        fpr_values = np.array(fpr_values)
+        mean_detection_rates = np.asarray(mean_detection_rates)
+        fpr_values = np.asarray(fpr_values)
 
-        # 对有限制的FPR范围积分 (0 到 integration_limit)
+        # 仅取 FPR <= 上限的范围，并按 FPR 升序积分（阈值升高时 FPR 递减）
         valid_indices = fpr_values <= integration_limit
         if np.sum(valid_indices) < 2:
             return 0.0
-
         fpr_limited = fpr_values[valid_indices]
         dr_limited = mean_detection_rates[valid_indices]
+        order = np.argsort(fpr_limited)
+        fpr_limited = fpr_limited[order]
+        dr_limited = dr_limited[order]
+        # 曲线可能在 FPR=0 处就结束（完美分离）；延伸到积分上限，
+        # 否则有效积分区间为空，PRO 会被错误地算成 0。
+        if fpr_limited[-1] < integration_limit:
+            fpr_limited = np.append(fpr_limited, integration_limit)
+            dr_limited = np.append(dr_limited, dr_limited[-1])
+        if fpr_limited[-1] <= fpr_limited[0]:
+            return 0.0
 
-        # 归一化积分
-        if fpr_limited[-1] > 0:
-            pro_auc = np.trapz(dr_limited, fpr_limited) / integration_limit
-        else:
-            pro_auc = 0.0
-
+        pro_auc = _trapz(dr_limited, fpr_limited) / integration_limit
         return float(np.clip(pro_auc, 0.0, 1.0))
 
     def evaluate_augmentation_effect(

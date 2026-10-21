@@ -13,12 +13,17 @@ dist/
 # Model checkpoints and large artifacts
 artifacts/
 checkpoints/
+weights/
 *.pth
 *.pt
+*.ckpt
 *.onnx
+*.safetensors
 datasets/mvtec_anomaly_detection/
 outputs/
 data/raw/
+core/feature_index_cache.json
+test_outputs/
 
 # Local config / secrets
 .env

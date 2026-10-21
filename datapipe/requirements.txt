@@ -1,0 +1,11 @@
+# 数据管线 A/B 的最小依赖（无需 GPU / 无需 torch）
+#
+#   pip install -r datapipe/requirements.txt
+#
+# openai 仅在启用 VLM 改写 / VLM 打分时需要；未配置 API key 时
+# 管线自动走确定性模板 / 启发式降级，不会导入该包。
+
+Pillow>=10.0.0
+numpy>=1.24.0,<2.0.0
+PyYAML>=6.0
+openai>=1.0.0

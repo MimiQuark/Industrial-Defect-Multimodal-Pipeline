@@ -134,6 +134,9 @@ evaluation/results.md   # 数据管线真实运行数字记录（与 model/evalu
 ### 数据管线快速开始（datapipe，无需 GPU / 无需 torch）
 
 ```bash
+# 0. 安装最小依赖（无需 torch；openai 仅 VLM 模式需要）
+pip install -r datapipe/requirements.txt
+
 # 1. 生成合成演示数据集（synthetic，仅用于跑通管线；真实使用时替换为 MVTec AD）
 python -m datapipe.make_demo_dataset
 
@@ -146,9 +149,12 @@ python -m datapipe.pipeline_b            # 产出 datapipe/reports/pipeline_b_re
 # 4. 测试
 python tests/test_datapipe.py
 
-# 启用 VLM（Qwen-VL，OpenAI 兼容接口）：设置环境变量后重跑即可
+# 启用 VLM（Qwen-VL，OpenAI 兼容接口）：先安装 openai 并设置环境变量
+#   pip install -r datapipe/requirements.txt
 #   set DASHSCOPE_API_KEY=sk-...   # Windows
 #   export DASHSCOPE_API_KEY=sk-...  # Linux/macOS
+# 单条 VLM 失败会自动回退模板，manifest 的 rewrite_mode 记为
+# vlm_partial_fallback，并给出 rewrite_mode_counts 明细。
 ```
 
 ## 快速开始（原毕设功能）

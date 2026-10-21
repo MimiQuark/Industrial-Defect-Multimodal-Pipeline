@@ -103,7 +103,9 @@ _VLM_SYSTEM_PROMPT = (
     "（缺陷类型/位置/面积占比/bbox，均来自 ground truth mask 的程序化提取）。"
     "请把结构化标注改写成一段自然、多样的中文质检描述。"
     "要求：1) 不编造标注之外的缺陷；2) 只做定性描述，不输出像素级坐标或 bbox；"
-    "3) 直接输出描述文本，不要附加解释。"
+    "3) 直接输出描述文本，不要附加解释；"
+    "4) 必须原样使用结构化标注里的中文缺陷类型名称（如「划痕」「金属污染」），"
+    "不要替换成近义词、英文或自造名称。"
 )
 
 
@@ -153,7 +155,10 @@ def resolve_api_key(vlm_cfg: dict) -> str | None:
 
 def rewrite_annotations(annotations: list[Annotation], dataset_root: Path,
                         vlm_cfg: dict, seed: int) -> tuple[list[dict], str]:
-    """批量改写标注。返回 (records, mode)；mode ∈ {"vlm", "template_fallback"}。
+    """批量改写标注。返回 (records, mode)。
+
+    mode ∈ {"vlm", "vlm_partial_fallback", "template_fallback"}；部分样本
+    VLM 调用失败时如实标为 vlm_partial_fallback，绝不整体标成 "vlm"。
 
     record = {image, instruction, response, meta}，meta 中含结构化标注与改写模式。
     未配置 API key 或 enable_vlm=false 时整体走模板降级；
@@ -208,6 +213,15 @@ def rewrite_annotations(annotations: list[Annotation], dataset_root: Path,
     else:
         for i, ann in enumerate(annotations):
             records[i] = process(i, ann)
+
+    # 单条 VLM 失败会回退模板；此时不能把整次运行标成 "vlm"。
+    if mode == "vlm":
+        n_vlm = sum(1 for r in records
+                    if r["meta"]["rewrite_mode"] == "vlm")
+        if n_vlm == 0:
+            mode = "template_fallback"
+        elif n_vlm < len(records):
+            mode = "vlm_partial_fallback"
     return records, mode
 
 
