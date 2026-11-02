@@ -23,7 +23,7 @@
 
 ## 运行环境
 
-- Python 3.12.14（Kimi 托管解释器），PIL 12.2.0、numpy 2.4.4、pyyaml 6.0.3
+- Python 3.12.14，PIL 12.2.0、numpy 2.4.4、pyyaml 6.0.3
 - VLM：qwen3-vl-plus（DashScope 兼容模式，4 并发，2026-09-02 真实调用）
 - 无 API key 时 → 管线 A 走**确定性模板降级**，管线 B 走**启发式降级打分**
   （均非 VLM 输出，产出与报告中如实标注）
