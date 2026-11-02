@@ -152,7 +152,7 @@
 
         <section class="aug-evaluation" id="augEvaluationSection">
             <h2><i class="fas fa-microscope"></i> 增广图像评估</h2>
-            <p>系统从缺陷置信度、缺陷位置与类型、生成质量以及FID、IS、LPIPS、PSNR等多个维度对增广结果进行综合评估，确保生成的伪异常图像在真实性和多样性之间取得平衡。</p>
+            <p>系统从缺陷类型、异常显著度、缺陷位置与生成质量四个维度描述增广结果。页面展示的数值均由像素差异估算，用于界面上的相对比较，<strong>不是 FID、IS、LPIPS、PSNR 等标准评测指标</strong>，不能作为实验结论引用。</p>
             <div class="aug-eval-placeholder" id="augEvalPlaceholder">
                 请先上传并生成图像，评估结果会显示在这里。
             </div>
@@ -192,31 +192,10 @@
                     </div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-card-icon"><i class="fas fa-chart-line"></i></div>
+                    <div class="metric-card-icon"><i class="fas fa-info-circle"></i></div>
                     <div class="metric-card-body">
-                        <h4>FID (Fréchet Inception Distance)</h4>
-                        <p>衡量生成图像分布与真实分布的 Wasserstein 距离，数值越低表示生成图像越接近真实</p>
-                    </div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-card-icon"><i class="fas fa-chart-pie"></i></div>
-                    <div class="metric-card-body">
-                        <h4>IS (Inception Score)</h4>
-                        <p>衡量生成图像的清晰度与类别多样性，数值越高表示图像质量越好、类别覆盖越广</p>
-                    </div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-card-icon"><i class="fas fa-eye"></i></div>
-                    <div class="metric-card-body">
-                        <h4>LPIPS (感知相似度)</h4>
-                        <p>Learned Perceptual Image Patch Similarity，基于深度特征衡量图像对之间的感知差异，值越低越相似</p>
-                    </div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-card-icon"><i class="fas fa-signal"></i></div>
-                    <div class="metric-card-body">
-                        <h4>PSNR (峰值信噪比)</h4>
-                        <p>Peak Signal-to-Noise Ratio，衡量图像重建质量与失真程度，单位为 dB，数值越高表示失真越小</p>
+                        <h4>关于标准评测指标</h4>
+                        <p>本页面不展示 FID、IS、LPIPS、PSNR。这些指标需要单独运行评测脚本并保留原始产物，未运行时不提供数值。</p>
                     </div>
                 </div>
             </div>

@@ -190,15 +190,16 @@ trainer.train()
 ### 增广（CLI）
 
 ```bash
+# 从仓库根目录以模块方式运行（直接 python core/integrated_augmentor.py 会因 sys.path 缺少项目根而 ImportError）
 # GAN 伪异常
-python core/integrated_augmentor.py --mode single --input path/to/good.png --variations 5
+python -m core.integrated_augmentor --mode single --input path/to/good.png --variations 5
 
 # 真实缺陷迁移（推荐，不依赖 GAN）
-python core/integrated_augmentor.py --mode real --input path/to/good.png --category bottle
+python -m core.integrated_augmentor --mode real --input path/to/good.png --category bottle
 
 # 检索式 / 堆叠式
-python core/integrated_augmentor.py --mode retrieval --input path/to/good.png --category bottle
-python core/integrated_augmentor.py --mode stacking  --input path/to/good.png --category bottle
+python -m core.integrated_augmentor --mode retrieval --input path/to/good.png --category bottle
+python -m core.integrated_augmentor --mode stacking  --input path/to/good.png --category bottle
 ```
 
 ### Web 演示

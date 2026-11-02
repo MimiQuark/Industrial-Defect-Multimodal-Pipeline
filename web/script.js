@@ -325,11 +325,14 @@ document.addEventListener('DOMContentLoaded', function() {
             { label: '异常显著度', value: `${analysis.anomaly_salience || 0}%` },
             { label: '缺陷位置', value: analysis.defect_location || '—' },
             { label: '生成质量', value: analysis.generation_quality || '—' },
-            { label: 'FID', value: analysis.fid_score != null ? analysis.fid_score : '—' },
-            { label: 'IS', value: analysis.is_score != null ? analysis.is_score : '—' },
-            { label: 'LPIPS', value: analysis.lpips_score != null ? analysis.lpips_score : '—' },
-            { label: 'PSNR', value: analysis.psnr_score != null ? analysis.psnr_score : '—' },
         ];
+        // 仅展示像素差异代理值，不冒充 FID/IS/LPIPS/PSNR 标准指标
+        if (analysis.fid_proxy != null) {
+            evalItems.push({ label: '像素差异代理', value: analysis.fid_proxy });
+        }
+        if (analysis.metrics_note) {
+            evalItems.push({ label: '评测说明', value: analysis.metrics_note });
+        }
 
         if (augEvalGrid) {
             augEvalGrid.innerHTML = evalItems.map(item => `
@@ -350,7 +353,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const noise3 = await createFallbackPreview(currentImageUrl, 3);
         const patch1 = await createPatchCompositePreview(currentImageUrl, 10);
         const patch2 = await createPatchCompositePreview(currentImageUrl, 20);
-        const rnd = (a, b) => Math.round((a + Math.random() * (b - a)) * 10) / 10;
         const mockResult = {
             success: true,
             mode: 'fallback_simulation',
@@ -365,14 +367,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 '模拟 · 贴片风格 B（局部缺陷）',
             ],
             analysis: {
-                anomaly_salience: Math.round(78 + Math.random() * 18),
+                anomaly_salience: null,
                 defect_location: '右上区域',
                 defect_type: '划痕',
                 generation_quality: '高',
-                fid_score: rnd(16, 22),
-                is_score: rnd(2.8, 3.6),
-                lpips_score: rnd(0.26, 0.38),
-                psnr_score: rnd(26, 31)
+                fid_proxy: null,
+                metrics_note: '浏览器本地模拟，未执行任何评测'
             },
             message: '未连接到后端服务，当前为浏览器本地模拟结果。请用 Flask 启动 web/app.py 后再试。'
         };

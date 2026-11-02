@@ -98,9 +98,11 @@
 
 ## 测试
 
-- `python tests/test_datapipe.py` → **通过 7/7**（2026-09-02，VLM 改造后复跑）：
+- `python tests/test_datapipe.py` → **运行记录为 7/7**（2026-09-02，VLM 改造后复跑）：
   mask 标注提取、九宫格方位、dHash 去重、JSONL 校验、模板可复现性、
   启发式打分、端到端 smoke test。
+  注意：2026-09-02 之后测试文件新增了缺陷映射与 partial-fallback 两个用例，
+  当前登记 9 个用例；9/9 需要重新运行确认，本次未复跑。
 - `python tests/test_basic.py` → **未能运行**：`model/data/loader.py` 顶层
   `import cv2`，当前环境无 opencv 且按项目纪律不 pip install。
   该失败为环境预置限制，与本次新增的 datapipe 无关（datapipe 不依赖 cv2/torch）。

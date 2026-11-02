@@ -209,10 +209,13 @@ def _build_dynamic_analysis(input_img: Image.Image, output_img: Image.Image, mod
         'defect_scores': classification.get('scores', {}),
         'defect_confidence': round(float(defect_conf), 1),
         'generation_quality': quality,
-        'fid_score': round(float(fid_proxy), 2),
-        'is_score': round(float(is_proxy), 2),
-        'lpips_score': round(float(lpips_proxy), 3),
-        'psnr_score': round(float(psnr_proxy), 2)
+        # 以下数值由像素差异估算，仅用于界面上的相对比较，
+        # 不是 FID/IS/LPIPS/PSNR 等标准评测指标，不应作为实验结论引用。
+        'fid_proxy': round(float(fid_proxy), 2),
+        'is_proxy': round(float(is_proxy), 2),
+        'lpips_proxy': round(float(lpips_proxy), 3),
+        'psnr_proxy': round(float(psnr_proxy), 2),
+        'metrics_note': '以上为像素差异代理值，未运行标准 FID/IS/LPIPS/PSNR 评测'
     }
 
 @app.route('/')
@@ -972,12 +975,8 @@ def get_model_info():
                     'discriminator': '多尺度PatchGAN with CBAM注意力',
                     'loss_functions': ['WGAN-GP', '感知损失', '重构损失', 'LPIPS损失']
                 },
-                'performance': {
-                    'fid': 18.7,
-                    'is': 3.2,
-                    'lpips': 0.32,
-                    'psnr': 28.5
-                },
+                'performance': None,
+                'performance_note': '未运行标准评测，不提供 FID/IS/LPIPS/PSNR 数值',
                 'augmentor_info': info
             })
         except Exception as e:
@@ -993,12 +992,8 @@ def get_model_info():
             'discriminator': '多尺度PatchGAN with CBAM注意力',
             'loss_functions': ['WGAN-GP', '感知损失', '重构损失', 'LPIPS损失']
         },
-        'performance': {
-            'fid': 18.7,
-            'is': 3.2,
-            'lpips': 0.32,
-            'psnr': 28.5
-        }
+        'performance': None,
+        'performance_note': '未运行标准评测，不提供 FID/IS/LPIPS/PSNR 数值'
     }
     return jsonify(info)
 
